@@ -4,7 +4,7 @@ A mirror of **[iowaleadtracker.com](https://iowaleadtracker.com/)**, the canonic
 at **https://iowaleadtracker.github.io/**.
 
 It exists for readers who can't reach iowaleadtracker.com, for example on networks that
-block Cloudflare's Encrypted Client Hello (ECH). If the main site loads for you, use it.
+block Cloudflare. If the main site loads for you, use it.
 
 This repository holds only the build workflow. The model, the saved weather forecasts,
 every assumption and the site build are in

@@ -2,7 +2,7 @@
 #
 # The canonical site is https://iowaleadtracker.com/ (Cloudflare). This mirror serves the
 # same build for readers who can't reach that domain, for example on networks that block
-# Cloudflare's Encrypted Client Hello. Both are built from the source repository's `main`
+# Cloudflare. Both are built from the source repository's `main`
 # with the saved forecasts, replayed as of when they were pulled, so they show the same maps.
 name: Build mirror
 
