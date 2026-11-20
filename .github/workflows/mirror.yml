@@ -1,0 +1,93 @@
+# Builds https://iowaleadtracker.github.io/ from the iowaleadtracker source repository.
+#
+# The canonical site is https://iowaleadtracker.com/ (Cloudflare). This mirror serves the
+# same build for readers who can't reach that domain, for example on networks that block
+# Cloudflare's Encrypted Client Hello. Both are built from the source repository's `main`
+# with the saved forecasts, replayed as of when they were pulled, so they show the same maps.
+name: Build mirror
+
+on:
+  workflow_dispatch: # run by hand, or by `make_map_picker.py --deploy`
+  schedule:
+    - cron: "17 * * * *" # hourly; builds only when the source's main branch has changed
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: iowaleadtracker/iowaleadtracker
+  MIRROR_URL: https://iowaleadtracker.github.io/
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - name: Has the source changed since the last mirror?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          head=$(gh api "repos/$SOURCE_REPO/commits/main" --jq .sha)
+          live=$(curl -fsS "${MIRROR_URL}build.txt" 2>/dev/null | tr -d '[:space:]' || true)
+          echo "source main: $head; mirror built from: ${live:-nothing yet}"
+          echo "sha=$head" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" = "workflow_dispatch" ] || [ "$head" != "$live" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the source
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ steps.check.outputs.sha }}
+          path: source
+
+      - name: Set up Python
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: source/.python-version
+
+      - name: Build the site and the mirror
+        if: steps.check.outputs.changed == 'true'
+        working-directory: source/scenarios/iowa-aap-2026-11-20
+        run: |
+          python -m pip install -r ../../requirements.txt
+          python make_map_picker.py --build --mirror "$RUNNER_TEMP/mirror"
+          echo "${{ steps.check.outputs.sha }}" > "$RUNNER_TEMP/mirror/build.txt"
+
+      - name: Refuse a build that downloaded weather
+        if: steps.check.outputs.changed == 'true'
+        # The saved forecasts must reproduce the main site; any download would have been
+        # written into the cache file and would make the mirror differ.
+        run: git -C source diff --exit-code -- 'scenarios/*/met_cache/'
+
+      - name: Upload the mirror
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/mirror
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
