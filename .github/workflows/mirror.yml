@@ -62,9 +62,16 @@ jobs:
 
       - name: Build the site and the mirror
         if: steps.check.outputs.changed == 'true'
-        working-directory: source/scenarios/iowa-aap-2026-11-20
+        working-directory: source
         run: |
-          python -m pip install -r ../../requirements.txt
+          # The scenario folder is found, not named, so renaming it needs no change here.
+          builders=(scenarios/*/make_map_picker.py)
+          if [ "${#builders[@]}" -ne 1 ] || [ ! -f "${builders[0]}" ]; then
+            echo "::error::expected one scenarios/*/make_map_picker.py, found: ${builders[*]}"
+            exit 1
+          fi
+          python -m pip install -r requirements.txt
+          cd "$(dirname "${builders[0]}")"
           python make_map_picker.py --build --mirror "$RUNNER_TEMP/mirror"
           echo "${{ steps.check.outputs.sha }}" > "$RUNNER_TEMP/mirror/build.txt"
 
