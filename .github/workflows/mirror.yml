@@ -9,7 +9,10 @@ name: Build mirror
 on:
   workflow_dispatch: # run by hand, or by `make_map_picker.py --deploy`
   schedule:
-    - cron: "*/15 * * * *" # every 15 minutes; builds only when the source's main branch has changed
+    # Every 15 minutes, off the :00/:15/:30/:45 marks when GitHub is busiest: it runs
+    # schedules on a best-effort basis, and "*/15" went unrun for over 3 hours on Nov. 21.
+    # Builds only when the source's main branch has changed.
+    - cron: "7,22,37,52 * * * *"
 
 permissions:
   contents: read

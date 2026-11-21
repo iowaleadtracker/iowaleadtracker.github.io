@@ -18,8 +18,9 @@ repository's `main`, runs `make_map_picker.py --build --mirror`, and publishes t
 with GitHub Pages:
 
 - when started by hand or by the maintainer's deploy (`make_map_picker.py --deploy`),
-- and every 15 minutes, but only when `main` has a new commit (`build.txt` on the mirror records the
-  commit it was built from).
+- and every 15 minutes (at :07, :22, :37 and :52), but only when `main` has a new commit
+  (`build.txt` on the mirror records the commit it was built from). GitHub runs schedules on
+  a best-effort basis and can delay or skip them, so the deploy's start is the reliable path.
 
 Both sites are built from the same commit and the same saved forecasts, replayed as of
 when they were pulled, so they show the same maps. A build that would need to download
