@@ -9,7 +9,7 @@ name: Build mirror
 on:
   workflow_dispatch: # run by hand, or by `make_map_picker.py --deploy`
   schedule:
-    - cron: "17 * * * *" # hourly; builds only when the source's main branch has changed
+    - cron: "*/15 * * * *" # every 15 minutes; builds only when the source's main branch has changed
 
 permissions:
   contents: read
