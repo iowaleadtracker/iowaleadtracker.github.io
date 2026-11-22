@@ -4,6 +4,12 @@
 # same build for readers who can't reach that domain, for example on networks that block
 # Cloudflare. Both are built from the source repository's `main`
 # with the saved forecasts, replayed as of when they were pulled, so they show the same maps.
+#
+# Like the source's deploy, it reuses the site the source's CI already built from the same
+# files (artifact `site-<key>`, key from the source's tools/site_key.py), after checking
+# that the CI run passed and that its own commit has the same key. That takes a minute or
+# two instead of about 20. Without such a build, or if the download fails, it builds the
+# site itself.
 name: Build mirror
 
 on:
@@ -63,9 +69,63 @@ jobs:
         with:
           python-version-file: source/.python-version
 
+      - name: Find the source CI's build of these files
+        id: ci
+        if: steps.check.outputs.changed == 'true'
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f tools/site_key.py ]; then
+            echo "The source has no tools/site_key.py; building here."
+            exit 0
+          fi
+          key=$(python tools/site_key.py)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          gh api "repos/$SOURCE_REPO/actions/artifacts?name=site-$key&per_page=20" \
+            --jq '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.workflow_run.head_sha)"' \
+            > "$RUNNER_TEMP/candidates" || : > "$RUNNER_TEMP/candidates"
+          while read -r run sha <&3; do
+            info=$(gh api "repos/$SOURCE_REPO/actions/runs/$run" \
+              --jq '"\(.path) \(.status) \(.conclusion) \(.head_repository.full_name)"') || continue
+            if [ "$info" != ".github/workflows/ci.yml completed success $SOURCE_REPO" ]; then
+              echo "skip CI run $run: $info"
+              continue
+            fi
+            # The artifact's name is only a hint: check the run's own commit.
+            if ! git fetch -q --depth=1 origin "$sha"; then
+              echo "skip CI run $run: can't fetch $sha"
+              continue
+            fi
+            if [ "$(python tools/site_key.py "$sha")" != "$key" ]; then
+              echo "skip CI run $run: its commit $sha has different files"
+              continue
+            fi
+            echo "run=$run" >> "$GITHUB_OUTPUT"
+            echo "Reusing the site built and tested by $SOURCE_REPO CI run $GITHUB_SERVER_URL/$SOURCE_REPO/actions/runs/$run ($sha)." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          done 3< "$RUNNER_TEMP/candidates"
+          echo "No finished, passing CI build of these files; building here." \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Download the source CI's build
+        id: download
+        if: steps.ci.outputs.run
+        continue-on-error: true # then build instead
+        uses: actions/download-artifact@v8
+        with:
+          name: site-${{ steps.ci.outputs.key }}
+          repository: ${{ env.SOURCE_REPO }}
+          run-id: ${{ steps.ci.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ci-site
+
       - name: Build the site and the mirror
         if: steps.check.outputs.changed == 'true'
         working-directory: source
+        env:
+          REUSE: ${{ steps.download.outcome == 'success' }}
         run: |
           # The scenario folder is found, not named, so renaming it needs no change here.
           builders=(scenarios/*/make_map_picker.py)
@@ -75,7 +135,17 @@ jobs:
           fi
           python -m pip install -r requirements.txt
           cd "$(dirname "${builders[0]}")"
-          python make_map_picker.py --build --mirror "$RUNNER_TEMP/mirror"
+          if [ "$REUSE" = "true" ]; then
+            # CI's maps; this only re-renders the pages and writes the mirror.
+            mkdir -p outputs/site
+            cp -R "$RUNNER_TEMP/ci-site/." outputs/site/
+            python make_map_picker.py --mirror "$RUNNER_TEMP/mirror"
+          else
+            if [ -n "${{ steps.ci.outputs.run }}" ]; then
+              echo "::warning::Couldn't download the source CI's build; building here."
+            fi
+            python make_map_picker.py --build --mirror "$RUNNER_TEMP/mirror"
+          fi
           echo "${{ steps.check.outputs.sha }}" > "$RUNNER_TEMP/mirror/build.txt"
 
       - name: Refuse a build that downloaded weather
