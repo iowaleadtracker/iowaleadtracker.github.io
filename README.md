@@ -15,7 +15,9 @@ issues and corrections there.
 
 [`.github/workflows/mirror.yml`](.github/workflows/mirror.yml) checks out the source
 repository's `main`, runs `make_map_picker.py --build --mirror`, and publishes the result
-with GitHub Pages:
+with GitHub Pages. When the source's CI has already built the same files, it downloads
+that build and only re-renders the pages (`make_map_picker.py --mirror`), which takes a
+minute or two instead of about 20. It runs:
 
 - when started by hand or by the maintainer's deploy (`make_map_picker.py --deploy`),
 - and every 15 minutes (at :07, :22, :37 and :52), but only when `main` has a new commit
